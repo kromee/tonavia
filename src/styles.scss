@@ -1,0 +1,24 @@
+:root {
+  --tonavia-accent: #8d3df2;
+  --tonavia-border: #ddd9e6;
+  --tonavia-ink: #191522;
+  --tonavia-muted: #716b7e;
+  --tonavia-surface: #faf9fc;
+  color: var(--tonavia-ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: #fff;
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
