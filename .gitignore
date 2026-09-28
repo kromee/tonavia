@@ -13,6 +13,7 @@ yarn-error.log
 .env
 .env.*
 !.env.example
+/public/runtime-config.js
 
 # IDEs and editors
 .idea/

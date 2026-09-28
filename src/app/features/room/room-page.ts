@@ -138,16 +138,16 @@ export class RoomPage {
     this.nameDraft.set((event.target as HTMLInputElement).value);
   }
 
-  protected saveName(): void {
-    this.store.setGuestName(this.nameDraft());
+  protected async saveName(): Promise<void> {
+    await this.store.joinRoom(this.route.snapshot.paramMap.get('roomCode') ?? 'sin-código', this.nameDraft());
   }
 
   protected updateQuery(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
   }
 
-  protected requestSong(song: Omit<QueueItem, 'id' | 'requestedBy'>): void {
-    const result = this.store.addSong(song);
+  protected async requestSong(song: Omit<QueueItem, 'id' | 'requestedBy'>): Promise<void> {
+    const result = await this.store.addSong(song);
     this.feedback.set(
       result === 'added'
         ? 'Tu canción ya está en la cola.'

@@ -97,13 +97,13 @@ export class AdminPage {
     this.roomName.set((event.target as HTMLInputElement).value);
   }
 
-  protected createRoom(): void {
-    this.store.createRoom(this.roomName());
+  protected async createRoom(): Promise<void> {
+    await this.store.createRoom(this.roomName());
     void this.generateQr();
   }
 
-  protected closeRoom(): void {
-    this.store.closeRoom();
+  protected async closeRoom(): Promise<void> {
+    await this.store.closeRoom();
   }
 
   protected async copyLink(): Promise<void> {
