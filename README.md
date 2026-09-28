@@ -82,4 +82,4 @@ Las claves privadas de Spotify y los tokens de actualización nunca se envían a
 
 ## Estado del proyecto
 
-En planificación. El siguiente paso es crear la aplicación Angular y configurar los proyectos de Vercel, Supabase y Spotify.
+La base Angular PWA, las rutas de anfitrión e invitado, y un flujo local de sala y cola ya están creados. El esquema de Supabase y sus políticas RLS están en `supabase/migrations/`; consulta `docs/supabase-setup.md` para crear y configurar el proyecto.
