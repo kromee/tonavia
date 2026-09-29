@@ -15,7 +15,9 @@ export interface QueueItem {
   artist: string;
   id: string;
   requestedBy: string;
+  sentToSpotifyAt?: string | null;
   spotifyTrackId?: string;
+  startedAt?: string | null;
   title: string;
 }
 
@@ -32,6 +34,7 @@ export class RoomSessionStore {
   readonly remoteError = signal('');
   readonly syncMode = signal<'local' | 'remote'>(this.supabase.isConfigured ? 'remote' : 'local');
   readonly isActive = computed(() => this.room()?.status === 'active');
+  readonly nowPlaying = computed(() => this.queue().find((item) => item.startedAt) ?? null);
 
   constructor() {
     if (this.supabase.isConfigured && this.room() && !this.room()!.id) {
@@ -148,6 +151,30 @@ export class RoomSessionStore {
     } catch {
       // The next refresh or realtime event will retry.
     }
+  }
+
+  async syncPlayback(spotifyTrackId: string): Promise<void> {
+    const roomId = this.room()?.id;
+    if (!this.supabase.isConfigured || !roomId) return;
+
+    const { error } = await this.supabase.client.rpc('sync_room_playback', {
+      p_room_id: roomId,
+      p_spotify_track_id: spotifyTrackId
+    });
+    if (error) throw error;
+    await this.refreshQueue();
+  }
+
+  async markSentToSpotify(itemId: string): Promise<void> {
+    const { error } = await this.supabase.client.rpc('mark_queue_item_sent', { p_item_id: itemId });
+    if (error) throw error;
+    await this.refreshQueue();
+  }
+
+  async removeItem(itemId: string): Promise<void> {
+    const { error } = await this.supabase.client.rpc('remove_queue_item', { p_item_id: itemId });
+    if (error) throw error;
+    await this.refreshQueue();
   }
 
   async joinRoom(code: string, nickname: string): Promise<void> {
@@ -287,7 +314,10 @@ export class RoomSessionStore {
         return { status: 'closed', message: 'La sala ya fue cerrada.' };
       }
       if (message.includes('request limit')) {
-        return { status: 'closed', message: 'Ya tienes 3 canciones en cola. Espera a que suenen para pedir otra.' };
+        return {
+          status: 'closed',
+          message: 'Ya tienes 3 canciones esperando turno. En cuanto empiece a sonar una de ellas, podrás pedir otra.'
+        };
       }
 
       this.useLocalFallback(error);
@@ -330,6 +360,7 @@ export class RoomSessionStore {
 
     if (!error && data) {
       const preview = data as Array<{
+        album_image_url: string | null;
         artist: string | null;
         item_id: string | null;
         requested_by: string | null;
@@ -337,6 +368,9 @@ export class RoomSessionStore {
         room_id: string;
         room_name: string;
         room_status: Room['status'];
+        sent_to_spotify_at: string | null;
+        spotify_track_id: string | null;
+        started_at: string | null;
         title: string | null;
       }>;
       const first = preview[0];
@@ -354,9 +388,13 @@ export class RoomSessionStore {
         preview
           .filter((item) => item.item_id)
           .map((item) => ({
+            albumImageUrl: item.album_image_url,
             artist: item.artist ?? '',
             id: item.item_id as string,
             requestedBy: item.requested_by ?? 'Invitado',
+            sentToSpotifyAt: item.sent_to_spotify_at,
+            spotifyTrackId: item.spotify_track_id ?? undefined,
+            startedAt: item.started_at,
             title: item.title ?? ''
           }))
       );
@@ -373,7 +411,7 @@ export class RoomSessionStore {
 
     const { data, error } = await this.supabase.client
       .from('queue_items')
-      .select('id, title, artist, album_image_url, spotify_track_id, position, guests(nickname)')
+      .select('id, title, artist, album_image_url, spotify_track_id, position, started_at, sent_to_spotify_at, guests(nickname)')
       .eq('room_id', room.id)
       .eq('status', 'queued')
       .order('position');
@@ -382,7 +420,7 @@ export class RoomSessionStore {
       ? (
           await this.supabase.client
             .from('queue_items')
-            .select('id, title, artist, album_image_url, spotify_track_id, position')
+            .select('id, title, artist, album_image_url, spotify_track_id, position, started_at, sent_to_spotify_at')
             .eq('room_id', room.id)
             .eq('status', 'queued')
             .order('position')
@@ -404,7 +442,9 @@ export class RoomSessionStore {
                 ? item.guests[0]?.nickname
                 : (item.guests as { nickname?: string } | null)?.nickname) ?? 'Invitado'
             : 'Invitado',
+        sentToSpotifyAt: item.sent_to_spotify_at,
         spotifyTrackId: item.spotify_track_id,
+        startedAt: item.started_at,
         title: item.title
       }))
     );

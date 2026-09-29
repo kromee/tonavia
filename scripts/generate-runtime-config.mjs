@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { writeFile } from 'node:fs/promises';
 
 const config = {
+  spotifyClientId: process.env.SPOTIFY_CLIENT_ID ?? '',
   supabaseUrl: process.env.SUPABASE_URL ?? '',
   supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY ?? ''
 };

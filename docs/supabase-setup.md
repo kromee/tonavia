@@ -6,7 +6,7 @@
 2. En **Authentication → Providers**, habilita **Anonymous sign-ins**. Los invitados lo usan para tener una identidad temporal, sin registro ni contraseña.
 3. En **Project Settings → API**, copia la URL del proyecto y la clave `anon` o `publishable`.
 
-No uses ni compartas la clave `service_role`: solo se utiliza en funciones privadas de Vercel cuando se implemente Spotify.
+No uses ni compartas la clave `service_role`; Tonavia no la necesita.
 
 ## 2. Aplicar el esquema
 
@@ -34,11 +34,25 @@ cp .env.example .env
 
 Para Vercel, crea las mismas variables en **Project Settings → Environment Variables**. La clave pública puede estar en el navegador; no contiene privilegios administrativos. Las políticas RLS son las que protegen los datos.
 
-## Próxima integración
+## 4. Migraciones posteriores
 
-Cuando las variables estén disponibles, se añadirá el cliente `@supabase/supabase-js` al navegador para:
+Ejecuta en orden, una sola vez cada una:
 
-1. iniciar una sesión anónima del invitado;
-2. llamar `join_room` al escanear el QR;
-3. cargar y suscribirse a `queue_items`;
-4. llamar `request_queue_item` al pedir una canción.
+```text
+supabase/migrations/20260928175000_fix_room_access_policies.sql
+supabase/migrations/20260928180000_fix_join_room_function.sql
+supabase/migrations/20260928181000_public_room_queue.sql
+supabase/migrations/20260929130000_spotify_playback_sync.sql
+```
+
+La última añade la sincronización con Spotify: marca la canción que está sonando, la retira al terminar y libera el lugar del invitado en cuanto su canción empieza.
+
+## 5. Conectar Spotify del anfitrión
+
+En [Spotify for Developers](https://developer.spotify.com/dashboard), dentro de la app de Tonavia:
+
+1. **Settings → Redirect URIs**: agrega `https://tonavia.vercel.app/admin` y, para desarrollo, `http://127.0.0.1:4200/admin` (Spotify no acepta `localhost`).
+2. **User Management**: mientras la app esté en modo desarrollo, agrega el correo de la cuenta de Spotify del anfitrión.
+3. La cuenta del anfitrión necesita Spotify Premium para que Tonavia reproduzca y encole canciones.
+
+El panel `/admin` debe permanecer abierto durante la reunión: es quien sincroniza lo que suena con la cola.

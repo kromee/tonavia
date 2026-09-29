@@ -2,7 +2,9 @@ import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import QRCode from 'qrcode';
 
+import { SpotifyPlayerService } from '../../core/spotify/spotify-player.service';
 import { RoomSessionStore } from '../rooms/room-session.store';
+import { PlaybackSyncService } from './playback-sync.service';
 
 @Component({
   selector: 'app-admin-page',
@@ -62,6 +64,41 @@ import { RoomSessionStore } from '../rooms/room-session.store';
           </div>
         </section>
 
+        @if (room()!.status === 'active') {
+          <section class="spotify-card">
+            <div>
+              <p class="eyebrow">Spotify</p>
+              @if (!spotifyConfigured) {
+                <h2>Spotify no está configurado</h2>
+                <p>Falta la variable SPOTIFY_CLIENT_ID en el despliegue.</p>
+              } @else if (!spotifyConnected()) {
+                <h2>Conecta tu Spotify</h2>
+                <p>Tonavia pondrá la cola en tu Spotify, marcará lo que está sonando y quitará cada canción cuando termine. Requiere Spotify Premium.</p>
+              } @else if (playback()?.title) {
+                <h2>{{ playback()!.isPlaying ? 'Sonando en Spotify' : 'En pausa en Spotify' }}</h2>
+                <p><strong>{{ playback()!.title }}</strong> · {{ playback()!.artist }}</p>
+                @if (playback()!.deviceName) {
+                  <p class="hint">En {{ playback()!.deviceName }}</p>
+                }
+              } @else {
+                <h2>Spotify conectado</h2>
+                <p>Abre Spotify en tu dispositivo y pulsa “Reproducir la cola”. Deja esta pantalla abierta para que la lista se sincronice.</p>
+              }
+              @if (spotifyError()) {
+                <p class="error">{{ spotifyError() }}</p>
+              }
+            </div>
+            <div class="actions">
+              @if (spotifyConfigured && !spotifyConnected()) {
+                <button type="button" (click)="connectSpotify()">Conectar Spotify</button>
+              } @else if (spotifyConnected()) {
+                <button type="button" (click)="playQueue()" [disabled]="!queue().length">Reproducir la cola</button>
+                <button class="secondary" type="button" (click)="disconnectSpotify()">Desconectar</button>
+              }
+            </div>
+          </section>
+        }
+
         <section class="queue-card">
           <div class="queue-heading">
             <div>
@@ -73,9 +110,16 @@ import { RoomSessionStore } from '../rooms/room-session.store';
           @if (queue().length) {
             <ol>
               @for (item of queue(); track item.id; let index = $index) {
-                <li>
-                  <span class="position">{{ index + 1 }}</span>
-                  <span><strong>{{ item.title }}</strong><small>{{ item.artist }} · {{ item.requestedBy }}</small></span>
+                <li [class.is-playing]="item.startedAt">
+                  <span class="position">{{ item.startedAt ? '▶' : index + 1 }}</span>
+                  <span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.artist }} · {{ item.requestedBy }}</small>
+                    @if (item.startedAt) {
+                      <small class="now-playing">Sonando ahora</small>
+                    }
+                  </span>
+                  <button class="remove" type="button" (click)="removeItem(item.id)" [attr.aria-label]="'Quitar ' + item.title">Quitar</button>
                 </li>
               }
             </ol>
@@ -108,25 +152,42 @@ import { RoomSessionStore } from '../rooms/room-session.store';
     .actions { display: flex; flex-wrap: wrap; gap: 0.65rem; grid-column: 1 / -1; }
     a, .secondary { background: #fff; border: 1px solid var(--tonavia-border); color: var(--tonavia-ink); }
     .danger { background: #a52c43; }
-    .setup-card .error { color: #a52c43; font-weight: 700; }
+    .setup-card .error, .spotify-card .error { color: #a52c43; font-weight: 700; }
+    .spotify-card { align-items: center; background: #effaf2; border: 1px solid #bfe6c9; border-radius: 1.5rem; display: grid; gap: 1rem; grid-template-columns: 1fr auto; padding: 1.5rem; }
+    .spotify-card .eyebrow { color: #1a8f4a; }
+    .spotify-card p:not(.eyebrow) { color: var(--tonavia-muted); line-height: 1.5; margin-top: 0.4rem; }
+    .spotify-card strong { color: var(--tonavia-ink); display: inline; }
+    .spotify-card .actions { grid-column: auto; }
+    .spotify-card button:not(.secondary) { background: #1db954; }
+    .hint { font-size: 0.85rem; }
+    button:disabled { cursor: not-allowed; opacity: 0.45; }
+    li.is-playing { background: #effaf2; border-radius: 0.85rem; padding: 0.4rem; }
+    .now-playing { color: #1a8f4a; font-weight: 700; }
+    .remove { background: transparent; border: 1px solid var(--tonavia-border); color: var(--tonavia-muted); font-size: 0.8rem; padding: 0.4rem 0.8rem; }
     .queue-card { background: var(--tonavia-surface); border: 1px solid var(--tonavia-border); border-radius: 1.5rem; padding: 1.5rem; }
     .queue-heading { align-items: center; display: flex; justify-content: space-between; gap: 1rem; }
     .queue-heading span, .empty-state, small { color: var(--tonavia-muted); }
     ol { display: grid; gap: 0.8rem; list-style: none; margin: 1.25rem 0 0; padding: 0; }
-    li { align-items: center; display: grid; gap: 0.75rem; grid-template-columns: auto 1fr; }
+    li { align-items: center; display: grid; gap: 0.75rem; grid-template-columns: auto 1fr auto; }
     .position { align-items: center; background: #ece1ff; border-radius: 50%; color: var(--tonavia-accent); display: inline-flex; font-size: 0.8rem; font-weight: 800; height: 1.75rem; justify-content: center; width: 1.75rem; }
     strong, small { display: block; }
     small { font-size: 0.82rem; margin-top: 0.18rem; }
     .empty-state { line-height: 1.5; margin-top: 1.25rem; }
-    @media (max-width: 40rem) { .page-shell { padding-top: 2rem; } .room-card { grid-template-columns: 1fr; } .qr-panel { justify-self: start; } }
+    @media (max-width: 40rem) { .page-shell { padding-top: 2rem; } .room-card, .spotify-card { grid-template-columns: 1fr; } .qr-panel { justify-self: start; } }
   `
 })
 export class AdminPage {
   private readonly store = inject(RoomSessionStore);
+  private readonly spotify = inject(SpotifyPlayerService);
+  private readonly sync = inject(PlaybackSyncService);
   private readonly refreshTimer = setInterval(() => void this.store.refreshQueue(), 8000);
 
   protected readonly room = this.store.room;
   protected readonly queue = this.store.queue;
+  protected readonly spotifyConfigured = this.spotify.isConfigured;
+  protected readonly spotifyConnected = this.spotify.isConnected;
+  protected readonly playback = this.sync.playback;
+  protected readonly spotifyError = this.sync.error;
   protected readonly restoring = signal(false);
   protected readonly roomCode = signal('');
   protected readonly openError = signal('');
@@ -139,7 +200,10 @@ export class AdminPage {
   });
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => clearInterval(this.refreshTimer));
+    inject(DestroyRef).onDestroy(() => {
+      clearInterval(this.refreshTimer);
+      this.sync.stop();
+    });
 
     const room = this.room();
     if (room) {
@@ -147,6 +211,48 @@ export class AdminPage {
       void this.store.hydrate(room.code);
     } else {
       void this.restoreRoom();
+    }
+
+    void this.startSpotifySync();
+  }
+
+  protected connectSpotify(): Promise<void> {
+    return this.spotify.connect();
+  }
+
+  protected disconnectSpotify(): void {
+    this.sync.stop();
+    this.spotify.disconnect();
+    this.playback.set(null);
+    this.spotifyError.set('');
+  }
+
+  protected playQueue(): Promise<void> {
+    return this.sync.playQueue();
+  }
+
+  protected async removeItem(itemId: string): Promise<void> {
+    try {
+      await this.store.removeItem(itemId);
+    } catch {
+      this.spotifyError.set('No se pudo quitar la canción. Solo el dispositivo que creó la sala puede hacerlo.');
+    }
+  }
+
+  private async startSpotifySync(): Promise<void> {
+    if (!this.spotify.isConfigured) return;
+
+    try {
+      const result = await this.spotify.completeConnectionFromUrl();
+      if (result === 'denied') {
+        this.spotifyError.set('No se completó la conexión con Spotify. Inténtalo de nuevo.');
+      }
+    } catch {
+      this.spotifyError.set('Spotify rechazó la conexión. Revisa que tu cuenta esté autorizada en la app de Spotify.');
+    }
+
+    if (this.spotify.isConnected()) {
+      this.sync.start();
     }
   }
 

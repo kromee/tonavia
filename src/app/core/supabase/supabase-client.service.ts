@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { SupabaseClient, createClient } from '@supabase/supabase-js';
 
 interface RuntimeConfig {
+  spotifyClientId: string;
   supabasePublishableKey: string;
   supabaseUrl: string;
 }
