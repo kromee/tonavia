@@ -168,8 +168,25 @@ export class RoomSessionStore {
     }
   }
 
-  async addSong(song: Omit<QueueItem, 'id' | 'requestedBy'>): Promise<'added' | 'duplicate' | 'closed'> {
-    if (!this.isActive()) return 'closed';
+  findQueuedSong(song: Pick<QueueItem, 'artist' | 'spotifyTrackId' | 'title'>): { item: QueueItem; position: number } | null {
+    const index = this.queue().findIndex((item) =>
+      song.spotifyTrackId
+        ? item.spotifyTrackId === song.spotifyTrackId
+        : item.title.toLocaleLowerCase() === song.title.toLocaleLowerCase() &&
+          item.artist.toLocaleLowerCase() === song.artist.toLocaleLowerCase()
+    );
+
+    if (index < 0) {
+      return null;
+    }
+
+    return { item: this.queue()[index], position: index + 1 };
+  }
+
+  async addSong(
+    song: Omit<QueueItem, 'id' | 'requestedBy'>
+  ): Promise<{ itemId: string; position: number; status: 'added' | 'duplicate'; title: string } | { status: 'closed' }> {
+    if (!this.isActive()) return { status: 'closed' };
 
     const room = this.room();
     if (this.supabase.isConfigured && room?.id) {
@@ -183,28 +200,35 @@ export class RoomSessionStore {
 
       if (!error) {
         await this.loadQueue();
-        return 'added';
+        const queued = this.findQueuedSong(song);
+        return queued
+          ? { itemId: queued.item.id, position: queued.position, status: 'added', title: queued.item.title }
+          : { status: 'closed' };
       }
 
-      if (error.message.toLocaleLowerCase().includes('already in the queue')) return 'duplicate';
-      if (error.message.toLocaleLowerCase().includes('room is closed')) return 'closed';
+      if (error.message.toLocaleLowerCase().includes('already in the queue')) {
+        const queued = this.findQueuedSong(song);
+        return queued
+          ? { itemId: queued.item.id, position: queued.position, status: 'duplicate', title: queued.item.title }
+          : { status: 'closed' };
+      }
+      if (error.message.toLocaleLowerCase().includes('room is closed')) return { status: 'closed' };
       this.useLocalFallback(error);
     }
 
-    const duplicate = this.queue().some((item) =>
-      song.spotifyTrackId
-        ? item.spotifyTrackId === song.spotifyTrackId
-        : item.title.toLocaleLowerCase() === song.title.toLocaleLowerCase() &&
-          item.artist.toLocaleLowerCase() === song.artist.toLocaleLowerCase()
-    );
-    if (duplicate) return 'duplicate';
+    const existing = this.findQueuedSong(song);
+    if (existing) {
+      return { itemId: existing.item.id, position: existing.position, status: 'duplicate', title: existing.item.title };
+    }
 
-    this.queue.update((items) => [
-      ...items,
-      { ...song, id: crypto.randomUUID(), requestedBy: this.guestName() || 'Invitado' }
-    ]);
+    const item: QueueItem = {
+      ...song,
+      id: crypto.randomUUID(),
+      requestedBy: this.guestName() || 'Invitado'
+    };
+    this.queue.update((items) => [...items, item]);
     this.persist();
-    return 'added';
+    return { itemId: item.id, position: this.queue().length, status: 'added', title: item.title };
   }
 
   private async loadPublicQueue(code: string): Promise<void> {
@@ -256,7 +280,7 @@ export class RoomSessionStore {
 
     const { data, error } = await this.supabase.client
       .from('queue_items')
-      .select('id, title, artist, album_image_url, position, guests(nickname)')
+      .select('id, title, artist, album_image_url, spotify_track_id, position, guests(nickname)')
       .eq('room_id', room.id)
       .eq('status', 'queued')
       .order('position');
@@ -271,6 +295,7 @@ export class RoomSessionStore {
           (Array.isArray(item.guests)
             ? item.guests[0]?.nickname
             : (item.guests as { nickname?: string } | null)?.nickname) ?? 'Invitado',
+        spotifyTrackId: item.spotify_track_id,
         title: item.title
       }))
     );
