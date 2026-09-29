@@ -46,6 +46,28 @@ import { RoomSessionStore } from '../rooms/room-session.store';
             }
           </div>
         </section>
+
+        <section class="queue-card">
+          <div class="queue-heading">
+            <div>
+              <p class="eyebrow">En la cola</p>
+              <h2>Lo que piden tus invitados</h2>
+            </div>
+            <span>{{ queue().length }} canciones</span>
+          </div>
+          @if (queue().length) {
+            <ol>
+              @for (item of queue(); track item.id; let index = $index) {
+                <li>
+                  <span class="position">{{ index + 1 }}</span>
+                  <span><strong>{{ item.title }}</strong><small>{{ item.artist }} · {{ item.requestedBy }}</small></span>
+                </li>
+              }
+            </ol>
+          } @else {
+            <p class="empty-state">Aún no hay canciones. Cuando alguien pida, aparecerá aquí.</p>
+          }
+        </section>
       }
     </main>
   `,
@@ -71,6 +93,15 @@ import { RoomSessionStore } from '../rooms/room-session.store';
     .actions { display: flex; flex-wrap: wrap; gap: 0.65rem; grid-column: 1 / -1; }
     a, .secondary { background: #fff; border: 1px solid var(--tonavia-border); color: var(--tonavia-ink); }
     .danger { background: #a52c43; }
+    .queue-card { background: var(--tonavia-surface); border: 1px solid var(--tonavia-border); border-radius: 1.5rem; padding: 1.5rem; }
+    .queue-heading { align-items: center; display: flex; justify-content: space-between; gap: 1rem; }
+    .queue-heading span, .empty-state, small { color: var(--tonavia-muted); }
+    ol { display: grid; gap: 0.8rem; list-style: none; margin: 1.25rem 0 0; padding: 0; }
+    li { align-items: center; display: grid; gap: 0.75rem; grid-template-columns: auto 1fr; }
+    .position { align-items: center; background: #ece1ff; border-radius: 50%; color: var(--tonavia-accent); display: inline-flex; font-size: 0.8rem; font-weight: 800; height: 1.75rem; justify-content: center; width: 1.75rem; }
+    strong, small { display: block; }
+    small { font-size: 0.82rem; margin-top: 0.18rem; }
+    .empty-state { line-height: 1.5; margin-top: 1.25rem; }
     @media (max-width: 40rem) { .page-shell { padding-top: 2rem; } .room-card { grid-template-columns: 1fr; } .qr-panel { justify-self: start; } }
   `
 })
@@ -78,6 +109,7 @@ export class AdminPage {
   private readonly store = inject(RoomSessionStore);
 
   protected readonly room = this.store.room;
+  protected readonly queue = this.store.queue;
   protected readonly roomName = signal('Noche en casa');
   protected readonly qrDataUrl = signal('');
   protected readonly copyLabel = signal('Copiar enlace');
@@ -90,6 +122,7 @@ export class AdminPage {
     const room = this.room();
     if (room) {
       void this.generateQr();
+      void this.store.hydrate(room.code);
     }
   }
 

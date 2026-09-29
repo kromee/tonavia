@@ -131,7 +131,7 @@ export class RoomPage {
   });
 
   constructor() {
-    this.store.ensureRoom(this.route.snapshot.paramMap.get('roomCode') ?? 'sin-código');
+    void this.store.openRoom(this.route.snapshot.paramMap.get('roomCode') ?? 'sin-código');
   }
 
   protected updateName(event: Event): void {
