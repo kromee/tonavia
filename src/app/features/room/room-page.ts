@@ -33,20 +33,27 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
             </div>
             <span>{{ queue().length }} en cola</span>
           </div>
-          <input
-            [value]="query()"
-            (input)="updateQuery($event)"
-            placeholder="Busca por canción o artista"
-            [disabled]="!isActive()"
-          />
-          <div class="results">
+          <label class="search-field" [class.is-searching]="searching()">
+            <input
+              [value]="query()"
+              (input)="updateQuery($event)"
+              placeholder="Busca por canción o artista"
+              [disabled]="!isActive()"
+              [attr.aria-busy]="searching()"
+            />
             @if (searching()) {
-              <p class="empty-state">Buscando en Spotify…</p>
-            } @else if (searchError()) {
+              <span class="spinner" aria-hidden="true"></span>
+            }
+          </label>
+          @if (searching()) {
+            <p class="search-status" aria-live="polite">Buscando “{{ query().trim() }}” en Spotify…</p>
+          }
+          <div class="results" [class.is-loading]="searching()">
+            @if (searchError()) {
               <p class="empty-state">{{ searchError() }}</p>
             } @else {
               @for (song of results(); track song.spotifyTrackId) {
-                <button class="song" type="button" (click)="requestSong(song)" [disabled]="!isActive()">
+                <button class="song" type="button" (click)="requestSong(song)" [disabled]="!isActive() || searching()">
                   @if (song.albumImageUrl) {
                     <img class="song-art" [src]="song.albumImageUrl" [alt]="song.title" />
                   } @else {
@@ -100,7 +107,13 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
     .card { background: var(--tonavia-surface); border: 1px solid var(--tonavia-border); border-radius: 1.25rem; padding: 1.25rem; }
     .profile-card { display: grid; gap: 0.85rem; }
     .profile-card p, .notice { color: var(--tonavia-muted); line-height: 1.5; }
-    input { background: #fff; border: 1px solid var(--tonavia-border); border-radius: 0.75rem; padding: 0.8rem 0.9rem; }
+    input { background: #fff; border: 1px solid var(--tonavia-border); border-radius: 0.75rem; padding: 0.8rem 0.9rem; width: 100%; }
+    .search-field { display: grid; position: relative; }
+    .search-field.is-searching input { padding-right: 2.75rem; }
+    .spinner { animation: spin 0.7s linear infinite; border: 2px solid var(--tonavia-border); border-radius: 50%; border-top-color: var(--tonavia-accent); height: 1.1rem; position: absolute; right: 0.85rem; top: 50%; transform: translateY(-50%); width: 1.1rem; }
+    .search-status { color: var(--tonavia-accent); font-size: 0.88rem; font-weight: 700; }
+    .results.is-loading { opacity: 0.45; pointer-events: none; }
+    @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
     button { border: 0; cursor: pointer; font: inherit; }
     .profile-card > button { background: var(--tonavia-ink); border-radius: 999px; color: #fff; font-weight: 700; padding: 0.85rem 1rem; }
     button:disabled { cursor: not-allowed; opacity: 0.45; }
@@ -143,6 +156,10 @@ export class RoomPage {
   }
 
   protected emptySearchLabel(): string {
+    if (this.searching()) {
+      return 'Filtrando resultados…';
+    }
+
     return this.query().trim().length < 2
       ? 'Escribe al menos 2 letras para buscar en Spotify.'
       : 'No encontramos canciones con esa búsqueda.';
@@ -159,6 +176,12 @@ export class RoomPage {
   protected updateQuery(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
     this.query.set(value);
+    const term = value.trim();
+    this.searching.set(term.length >= 2);
+    this.searchError.set('');
+    if (term.length < 2) {
+      this.results.set([]);
+    }
     clearTimeout(this.searchTimer);
     this.searchTimer = setTimeout(() => {
       void this.search(value);
