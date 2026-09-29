@@ -53,7 +53,7 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
               <p class="empty-state">{{ searchError() }}</p>
             } @else {
               @for (song of results(); track song.spotifyTrackId) {
-                <button class="song" type="button" (click)="requestSong(song)" [disabled]="!isActive() || searching()">
+                <button class="song" type="button" (click)="requestSong(song)" [disabled]="!isActive() || searching() || addingId() === song.spotifyTrackId">
                   @if (song.albumImageUrl) {
                     <img class="song-art" [src]="song.albumImageUrl" [alt]="song.title" />
                   } @else {
@@ -68,7 +68,9 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
             }
           </div>
           @if (feedback()) {
-            <p class="feedback">{{ feedback() }}</p>
+            <p class="feedback" [class.is-warning]="feedbackKind() === 'duplicate'" aria-live="assertive">
+              {{ feedback() }}
+            </p>
           }
         </section>
       }
@@ -84,9 +86,15 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
         @if (queue().length) {
           <ol>
             @for (item of queue(); track item.id; let index = $index) {
-              <li>
+              <li [id]="'queue-item-' + item.id" [class.is-highlighted]="highlightedId() === item.id">
                 <span class="position">{{ index + 1 }}</span>
-                <span><strong>{{ item.title }}</strong><small>{{ item.artist }} · {{ item.requestedBy }}</small></span>
+                <span>
+                  <strong>{{ item.title }}</strong>
+                  <small>{{ item.artist }} · {{ item.requestedBy }}</small>
+                  @if (highlightedId() === item.id) {
+                    <small class="just-added">Acabas de agregar esta canción</small>
+                  }
+                </span>
               </li>
             }
           </ol>
@@ -127,9 +135,12 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
     small { color: var(--tonavia-muted); font-size: 0.82rem; margin-top: 0.18rem; }
     .add { color: var(--tonavia-accent); font-size: 1.5rem; font-weight: 600; padding: 0 0.25rem; }
     .notice, .feedback { font-size: 0.83rem; }
-    .feedback { color: var(--tonavia-accent); font-weight: 700; }
+    .feedback { background: #ece1ff; border-radius: 0.85rem; color: var(--tonavia-accent); font-weight: 700; line-height: 1.45; padding: 0.85rem 1rem; }
+    .feedback.is-warning { background: #fff4e5; color: #8a5a12; }
     ol { display: grid; gap: 0.8rem; list-style: none; margin: 1.25rem 0 0; padding: 0; }
-    li { align-items: center; display: grid; gap: 0.75rem; grid-template-columns: auto 1fr; }
+    li { align-items: center; border-radius: 0.85rem; display: grid; gap: 0.75rem; grid-template-columns: auto 1fr; padding: 0.35rem 0.45rem; }
+    li.is-highlighted { background: #ece1ff; outline: 1px solid var(--tonavia-accent); }
+    .just-added { color: var(--tonavia-accent); font-weight: 700; }
     .position { align-items: center; background: #ece1ff; border-radius: 50%; color: var(--tonavia-accent); display: inline-flex; font-size: 0.8rem; font-weight: 800; height: 1.75rem; justify-content: center; width: 1.75rem; }
     .empty-state { color: var(--tonavia-muted); line-height: 1.5; padding: 2rem 0 0.5rem; text-align: center; }
   `
@@ -150,6 +161,10 @@ export class RoomPage {
   protected readonly searching = signal(false);
   protected readonly searchError = signal('');
   protected readonly feedback = signal('');
+  protected readonly feedbackKind = signal<'added' | 'duplicate' | 'closed' | ''>('');
+  protected readonly highlightedId = signal('');
+  protected readonly addingId = signal('');
+  private highlightTimer?: ReturnType<typeof setTimeout>;
 
   constructor() {
     void this.store.openRoom(this.route.snapshot.paramMap.get('roomCode') ?? 'sin-código');
@@ -189,14 +204,40 @@ export class RoomPage {
   }
 
   protected async requestSong(song: SpotifyTrack): Promise<void> {
+    this.addingId.set(song.spotifyTrackId);
     const result = await this.store.addSong(this.toQueueSong(song));
+    this.addingId.set('');
+
+    if (result.status === 'closed') {
+      this.feedbackKind.set('closed');
+      this.feedback.set('La sala ya fue cerrada.');
+      return;
+    }
+
+    this.feedbackKind.set(result.status);
     this.feedback.set(
-      result === 'added'
-        ? 'Tu canción ya está en la cola.'
-        : result === 'duplicate'
-          ? 'Esa canción ya está en la cola.'
-          : 'La sala ya fue cerrada.'
+      result.status === 'added'
+        ? `Listo: “${result.title}” quedó en el lugar ${result.position} de la cola.`
+        : `“${result.title}” ya estaba en la cola, en el lugar ${result.position}.`
     );
+    this.revealQueuedSong(result.itemId);
+  }
+
+  private revealQueuedSong(itemId: string): void {
+    this.highlightedId.set(itemId);
+    clearTimeout(this.highlightTimer);
+    this.highlightTimer = setTimeout(() => {
+      if (this.highlightedId() === itemId) {
+        this.highlightedId.set('');
+      }
+    }, 8000);
+
+    setTimeout(() => {
+      document.getElementById(`queue-item-${itemId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }, 80);
   }
 
   private async search(value: string): Promise<void> {
