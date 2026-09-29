@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { SpotifySearchService, SpotifyTrack } from '../../core/spotify/spotify-search.service';
@@ -86,11 +86,14 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
         @if (queue().length) {
           <ol>
             @for (item of queue(); track item.id; let index = $index) {
-              <li [id]="'queue-item-' + item.id" [class.is-highlighted]="highlightedId() === item.id">
-                <span class="position">{{ index + 1 }}</span>
+              <li [id]="'queue-item-' + item.id" [class.is-highlighted]="highlightedId() === item.id" [class.is-playing]="item.startedAt">
+                <span class="position">{{ item.startedAt ? '▶' : index + 1 }}</span>
                 <span>
                   <strong>{{ item.title }}</strong>
                   <small>{{ item.artist }} · {{ item.requestedBy }}</small>
+                  @if (item.startedAt) {
+                    <small class="now-playing">Sonando ahora</small>
+                  }
                   @if (highlightedId() === item.id) {
                     <small class="just-added">Acabas de agregar esta canción</small>
                   }
@@ -141,6 +144,8 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
     li { align-items: center; border-radius: 0.85rem; display: grid; gap: 0.75rem; grid-template-columns: auto 1fr; padding: 0.35rem 0.45rem; }
     li.is-highlighted { background: #ece1ff; outline: 1px solid var(--tonavia-accent); }
     .just-added { color: var(--tonavia-accent); font-weight: 700; }
+    li.is-playing { background: #effaf2; }
+    .now-playing { color: #1a8f4a; font-weight: 700; }
     .position { align-items: center; background: #ece1ff; border-radius: 50%; color: var(--tonavia-accent); display: inline-flex; font-size: 0.8rem; font-weight: 800; height: 1.75rem; justify-content: center; width: 1.75rem; }
     .empty-state { color: var(--tonavia-muted); line-height: 1.5; padding: 2rem 0 0.5rem; text-align: center; }
   `
@@ -168,6 +173,9 @@ export class RoomPage {
 
   constructor() {
     void this.store.openRoom(this.route.snapshot.paramMap.get('roomCode') ?? 'sin-código');
+
+    const refreshTimer = setInterval(() => void this.store.refreshQueue(), 10_000);
+    inject(DestroyRef).onDestroy(() => clearInterval(refreshTimer));
   }
 
   protected emptySearchLabel(): string {
