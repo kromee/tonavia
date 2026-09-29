@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import QRCode from 'qrcode';
 
@@ -15,13 +15,28 @@ import { RoomSessionStore } from '../rooms/room-session.store';
         <p class="lead">Crea una sala, comparte el QR y deja que tus invitados construyan la lista.</p>
       </section>
 
-      @if (!room()) {
+      @if (restoring()) {
+        <section class="setup-card">
+          <p>Buscando tu sala…</p>
+        </section>
+      } @else if (!room()) {
         <section class="setup-card">
           <h2>Crea tu sala</h2>
           <p>Elige un nombre y tendrás un enlace único para compartir con tus invitados.</p>
           <label for="room-name">Nombre de la reunión</label>
           <input id="room-name" [value]="roomName()" (input)="updateRoomName($event)" />
           <button type="button" (click)="createRoom()">Crear sala y QR</button>
+        </section>
+
+        <section class="setup-card">
+          <h2>¿Ya tienes una sala?</h2>
+          <p>Escribe el código que aparece bajo el QR para volver a ver su cola.</p>
+          <label for="room-code">Código de la sala</label>
+          <input id="room-code" [value]="roomCode()" (input)="updateRoomCode($event)" placeholder="Ej. 2BWB1LHFWALQ" />
+          <button class="secondary" type="button" (click)="openExistingRoom()">Abrir sala existente</button>
+          @if (openError()) {
+            <p class="error">{{ openError() }}</p>
+          }
         </section>
       } @else {
         <section class="room-card" aria-live="polite">
@@ -93,6 +108,7 @@ import { RoomSessionStore } from '../rooms/room-session.store';
     .actions { display: flex; flex-wrap: wrap; gap: 0.65rem; grid-column: 1 / -1; }
     a, .secondary { background: #fff; border: 1px solid var(--tonavia-border); color: var(--tonavia-ink); }
     .danger { background: #a52c43; }
+    .setup-card .error { color: #a52c43; font-weight: 700; }
     .queue-card { background: var(--tonavia-surface); border: 1px solid var(--tonavia-border); border-radius: 1.5rem; padding: 1.5rem; }
     .queue-heading { align-items: center; display: flex; justify-content: space-between; gap: 1rem; }
     .queue-heading span, .empty-state, small { color: var(--tonavia-muted); }
@@ -107,9 +123,13 @@ import { RoomSessionStore } from '../rooms/room-session.store';
 })
 export class AdminPage {
   private readonly store = inject(RoomSessionStore);
+  private readonly refreshTimer = setInterval(() => void this.store.refreshQueue(), 8000);
 
   protected readonly room = this.store.room;
   protected readonly queue = this.store.queue;
+  protected readonly restoring = signal(false);
+  protected readonly roomCode = signal('');
+  protected readonly openError = signal('');
   protected readonly roomName = signal('Noche en casa');
   protected readonly qrDataUrl = signal('');
   protected readonly copyLabel = signal('Copiar enlace');
@@ -119,15 +139,42 @@ export class AdminPage {
   });
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => clearInterval(this.refreshTimer));
+
     const room = this.room();
     if (room) {
       void this.generateQr();
       void this.store.hydrate(room.code);
+    } else {
+      void this.restoreRoom();
     }
   }
 
   protected updateRoomName(event: Event): void {
     this.roomName.set((event.target as HTMLInputElement).value);
+  }
+
+  protected updateRoomCode(event: Event): void {
+    this.roomCode.set((event.target as HTMLInputElement).value);
+    this.openError.set('');
+  }
+
+  protected async openExistingRoom(): Promise<void> {
+    const opened = await this.store.openRoomByCode(this.roomCode());
+    if (!opened) {
+      this.openError.set('No encontramos una sala con ese código.');
+      return;
+    }
+    void this.generateQr();
+  }
+
+  private async restoreRoom(): Promise<void> {
+    this.restoring.set(true);
+    const restored = await this.store.restoreOwnedRoom();
+    this.restoring.set(false);
+    if (restored) {
+      void this.generateQr();
+    }
   }
 
   protected async createRoom(): Promise<void> {

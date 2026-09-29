@@ -68,7 +68,7 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
             }
           </div>
           @if (feedback()) {
-            <p class="feedback" [class.is-warning]="feedbackKind() === 'duplicate'" aria-live="assertive">
+            <p class="feedback" [class.is-warning]="feedbackKind() === 'duplicate' || feedbackKind() === 'closed'" aria-live="assertive">
               {{ feedback() }}
             </p>
           }
@@ -135,7 +135,7 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
     small { color: var(--tonavia-muted); font-size: 0.82rem; margin-top: 0.18rem; }
     .add { color: var(--tonavia-accent); font-size: 1.5rem; font-weight: 600; padding: 0 0.25rem; }
     .notice, .feedback { font-size: 0.83rem; }
-    .feedback { background: #ece1ff; border-radius: 0.85rem; color: var(--tonavia-accent); font-weight: 700; line-height: 1.45; padding: 0.85rem 1rem; }
+    .feedback { background: #ece1ff; border-radius: 0.85rem; color: var(--tonavia-accent); font-weight: 700; line-height: 1.45; padding: 0.85rem 1rem; position: sticky; top: 0.75rem; z-index: 2; }
     .feedback.is-warning { background: #fff4e5; color: #8a5a12; }
     ol { display: grid; gap: 0.8rem; list-style: none; margin: 1.25rem 0 0; padding: 0; }
     li { align-items: center; border-radius: 0.85rem; display: grid; gap: 0.75rem; grid-template-columns: auto 1fr; padding: 0.35rem 0.45rem; }
@@ -205,22 +205,32 @@ export class RoomPage {
 
   protected async requestSong(song: SpotifyTrack): Promise<void> {
     this.addingId.set(song.spotifyTrackId);
-    const result = await this.store.addSong(this.toQueueSong(song));
-    this.addingId.set('');
+    this.feedbackKind.set('added');
+    this.feedback.set(`Agregando “${song.title}”…`);
 
-    if (result.status === 'closed') {
+    try {
+      const result = await this.store.addSong(this.toQueueSong(song));
+      if (result.status === 'closed') {
+        this.feedbackKind.set('closed');
+        this.feedback.set(result.message);
+        return;
+      }
+
+      this.feedbackKind.set(result.status);
+      this.feedback.set(
+        result.status === 'added'
+          ? `Listo: “${result.title}” quedó en el lugar ${result.position} de la cola.`
+          : `“${result.title}” ya estaba en la cola, en el lugar ${result.position}.`
+      );
+      if (result.itemId) {
+        this.revealQueuedSong(result.itemId);
+      }
+    } catch {
       this.feedbackKind.set('closed');
-      this.feedback.set('La sala ya fue cerrada.');
-      return;
+      this.feedback.set('No se pudo agregar la canción. Inténtalo de nuevo.');
+    } finally {
+      this.addingId.set('');
     }
-
-    this.feedbackKind.set(result.status);
-    this.feedback.set(
-      result.status === 'added'
-        ? `Listo: “${result.title}” quedó en el lugar ${result.position} de la cola.`
-        : `“${result.title}” ya estaba en la cola, en el lugar ${result.position}.`
-    );
-    this.revealQueuedSong(result.itemId);
   }
 
   private revealQueuedSong(itemId: string): void {
