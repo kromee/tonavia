@@ -1,15 +1,8 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
+import { SpotifySearchService, SpotifyTrack } from '../../core/spotify/spotify-search.service';
 import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
-
-const SONGS: Omit<QueueItem, 'id' | 'requestedBy'>[] = [
-  { title: 'DÁKITI', artist: 'Bad Bunny, Jhayco' },
-  { title: 'Flowers', artist: 'Miley Cyrus' },
-  { title: 'As It Was', artist: 'Harry Styles' },
-  { title: 'Provenza', artist: 'KAROL G' },
-  { title: 'Blinding Lights', artist: 'The Weeknd' }
-];
 
 @Component({
   selector: 'app-room-page',
@@ -40,22 +33,36 @@ const SONGS: Omit<QueueItem, 'id' | 'requestedBy'>[] = [
             </div>
             <span>{{ queue().length }} en cola</span>
           </div>
-          <input [value]="query()" (input)="updateQuery($event)" placeholder="Busca por canción o artista" [disabled]="!isActive()" />
+          <input
+            [value]="query()"
+            (input)="updateQuery($event)"
+            placeholder="Busca por canción o artista"
+            [disabled]="!isActive()"
+          />
           <div class="results">
-            @for (song of results(); track song.title) {
-              <button class="song" type="button" (click)="requestSong(song)" [disabled]="!isActive()">
-                <span class="song-art">♫</span>
-                <span><strong>{{ song.title }}</strong><small>{{ song.artist }}</small></span>
-                <span class="add">+</span>
-              </button>
-            } @empty {
-              <p class="empty-state">No encontramos canciones de muestra con esa búsqueda.</p>
+            @if (searching()) {
+              <p class="empty-state">Buscando en Spotify…</p>
+            } @else if (searchError()) {
+              <p class="empty-state">{{ searchError() }}</p>
+            } @else {
+              @for (song of results(); track song.spotifyTrackId) {
+                <button class="song" type="button" (click)="requestSong(song)" [disabled]="!isActive()">
+                  @if (song.albumImageUrl) {
+                    <img class="song-art" [src]="song.albumImageUrl" [alt]="song.title" />
+                  } @else {
+                    <span class="song-art">♫</span>
+                  }
+                  <span><strong>{{ song.title }}</strong><small>{{ song.artist }}</small></span>
+                  <span class="add">+</span>
+                </button>
+              } @empty {
+                <p class="empty-state">{{ emptySearchLabel() }}</p>
+              }
             }
           </div>
           @if (feedback()) {
             <p class="feedback">{{ feedback() }}</p>
           }
-          <p class="notice">El catálogo de Spotify se conectará en la siguiente fase. Estas canciones son una demostración del flujo.</p>
         </section>
       }
 
@@ -102,7 +109,7 @@ const SONGS: Omit<QueueItem, 'id' | 'requestedBy'>[] = [
     .search-card { display: grid; gap: 1rem; }
     .results { display: grid; gap: 0.5rem; }
     .song { align-items: center; background: #fff; border: 1px solid var(--tonavia-border); border-radius: 0.85rem; color: var(--tonavia-ink); display: grid; gap: 0.75rem; grid-template-columns: auto 1fr auto; padding: 0.65rem; text-align: left; }
-    .song-art { align-items: center; background: #ece1ff; border-radius: 0.65rem; color: var(--tonavia-accent); display: inline-flex; font-size: 1.1rem; height: 2.5rem; justify-content: center; width: 2.5rem; }
+    .song-art { align-items: center; background: #ece1ff; border-radius: 0.65rem; color: var(--tonavia-accent); display: inline-flex; font-size: 1.1rem; height: 2.5rem; justify-content: center; object-fit: cover; width: 2.5rem; }
     strong, small { display: block; }
     small { color: var(--tonavia-muted); font-size: 0.82rem; margin-top: 0.18rem; }
     .add { color: var(--tonavia-accent); font-size: 1.5rem; font-weight: 600; padding: 0 0.25rem; }
@@ -117,6 +124,8 @@ const SONGS: Omit<QueueItem, 'id' | 'requestedBy'>[] = [
 export class RoomPage {
   private readonly route = inject(ActivatedRoute);
   private readonly store = inject(RoomSessionStore);
+  private readonly spotify = inject(SpotifySearchService);
+  private searchTimer?: ReturnType<typeof setTimeout>;
 
   protected readonly room = this.store.room;
   protected readonly queue = this.store.queue;
@@ -124,14 +133,19 @@ export class RoomPage {
   protected readonly isActive = this.store.isActive;
   protected readonly nameDraft = signal('');
   protected readonly query = signal('');
+  protected readonly results = signal<SpotifyTrack[]>([]);
+  protected readonly searching = signal(false);
+  protected readonly searchError = signal('');
   protected readonly feedback = signal('');
-  protected readonly results = computed(() => {
-    const term = this.query().trim().toLocaleLowerCase();
-    return term ? SONGS.filter((song) => `${song.title} ${song.artist}`.toLocaleLowerCase().includes(term)) : SONGS;
-  });
 
   constructor() {
     void this.store.openRoom(this.route.snapshot.paramMap.get('roomCode') ?? 'sin-código');
+  }
+
+  protected emptySearchLabel(): string {
+    return this.query().trim().length < 2
+      ? 'Escribe al menos 2 letras para buscar en Spotify.'
+      : 'No encontramos canciones con esa búsqueda.';
   }
 
   protected updateName(event: Event): void {
@@ -143,11 +157,16 @@ export class RoomPage {
   }
 
   protected updateQuery(event: Event): void {
-    this.query.set((event.target as HTMLInputElement).value);
+    const value = (event.target as HTMLInputElement).value;
+    this.query.set(value);
+    clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => {
+      void this.search(value);
+    }, 350);
   }
 
-  protected async requestSong(song: Omit<QueueItem, 'id' | 'requestedBy'>): Promise<void> {
-    const result = await this.store.addSong(song);
+  protected async requestSong(song: SpotifyTrack): Promise<void> {
+    const result = await this.store.addSong(this.toQueueSong(song));
     this.feedback.set(
       result === 'added'
         ? 'Tu canción ya está en la cola.'
@@ -155,5 +174,36 @@ export class RoomPage {
           ? 'Esa canción ya está en la cola.'
           : 'La sala ya fue cerrada.'
     );
+  }
+
+  private async search(value: string): Promise<void> {
+    const term = value.trim();
+    if (term.length < 2) {
+      this.results.set([]);
+      this.searchError.set('');
+      this.searching.set(false);
+      return;
+    }
+
+    this.searching.set(true);
+    this.searchError.set('');
+
+    try {
+      this.results.set(await this.spotify.search(term));
+    } catch {
+      this.results.set([]);
+      this.searchError.set('No se pudo buscar en Spotify. Inténtalo de nuevo.');
+    } finally {
+      this.searching.set(false);
+    }
+  }
+
+  private toQueueSong(song: SpotifyTrack): Omit<QueueItem, 'id' | 'requestedBy'> {
+    return {
+      albumImageUrl: song.albumImageUrl,
+      artist: song.artist,
+      spotifyTrackId: song.spotifyTrackId,
+      title: song.title
+    };
   }
 }
