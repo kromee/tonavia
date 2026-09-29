@@ -169,12 +169,16 @@ export class RoomSessionStore {
   }
 
   findQueuedSong(song: Pick<QueueItem, 'artist' | 'spotifyTrackId' | 'title'>): { item: QueueItem; position: number } | null {
-    const index = this.queue().findIndex((item) =>
-      song.spotifyTrackId
-        ? item.spotifyTrackId === song.spotifyTrackId
-        : item.title.toLocaleLowerCase() === song.title.toLocaleLowerCase() &&
-          item.artist.toLocaleLowerCase() === song.artist.toLocaleLowerCase()
-    );
+    const index = this.queue().findIndex((item) => {
+      if (song.spotifyTrackId && item.spotifyTrackId === song.spotifyTrackId) {
+        return true;
+      }
+
+      return (
+        item.title.toLocaleLowerCase() === song.title.toLocaleLowerCase() &&
+        item.artist.toLocaleLowerCase() === song.artist.toLocaleLowerCase()
+      );
+    });
 
     if (index < 0) {
       return null;
@@ -185,35 +189,49 @@ export class RoomSessionStore {
 
   async addSong(
     song: Omit<QueueItem, 'id' | 'requestedBy'>
-  ): Promise<{ itemId: string; position: number; status: 'added' | 'duplicate'; title: string } | { status: 'closed' }> {
-    if (!this.isActive()) return { status: 'closed' };
+  ): Promise<{ itemId: string; position: number; status: 'added' | 'duplicate'; title: string } | { status: 'closed'; message: string }> {
+    if (!this.isActive()) return { status: 'closed', message: 'La sala ya fue cerrada.' };
 
     const room = this.room();
     if (this.supabase.isConfigured && room?.id) {
-      const { error } = await this.supabase.client.rpc('request_queue_item', {
-        p_album_image_url: song.albumImageUrl ?? null,
-        p_artist: song.artist,
-        p_room_id: room.id,
-        p_spotify_track_id: song.spotifyTrackId || this.trackId(song),
-        p_title: song.title
-      });
+      let { error } = await this.requestRemoteSong(room.id, song);
 
-      if (!error) {
-        await this.loadQueue();
-        const queued = this.findQueuedSong(song);
-        return queued
-          ? { itemId: queued.item.id, position: queued.position, status: 'added', title: queued.item.title }
-          : { status: 'closed' };
+      if (error?.message.toLocaleLowerCase().includes('join this room') && this.guestName() && room.code) {
+        await this.joinRoom(room.code, this.guestName());
+        ({ error } = await this.requestRemoteSong(room.id, song));
       }
 
-      if (error.message.toLocaleLowerCase().includes('already in the queue')) {
+      if (!error) {
+        try {
+          await this.loadQueue();
+        } catch {
+          await this.loadPublicQueue(room.code);
+        }
+        const queued = this.findQueuedSong(song);
+        return {
+          itemId: queued?.item.id ?? '',
+          position: queued?.position ?? this.queue().length,
+          status: 'added',
+          title: queued?.item.title ?? song.title
+        };
+      }
+
+      const message = error.message.toLocaleLowerCase();
+      if (message.includes('already in the queue')) {
         const queued = this.findQueuedSong(song);
         return queued
           ? { itemId: queued.item.id, position: queued.position, status: 'duplicate', title: queued.item.title }
-          : { status: 'closed' };
+          : { status: 'closed', message: 'Esa canción ya está en la cola.' };
       }
-      if (error.message.toLocaleLowerCase().includes('room is closed')) return { status: 'closed' };
+      if (message.includes('room is closed')) {
+        return { status: 'closed', message: 'La sala ya fue cerrada.' };
+      }
+      if (message.includes('request limit')) {
+        return { status: 'closed', message: 'Ya tienes 3 canciones en cola. Espera a que suenen para pedir otra.' };
+      }
+
       this.useLocalFallback(error);
+      return { status: 'closed', message: 'No se pudo agregar la canción. Inténtalo de nuevo.' };
     }
 
     const existing = this.findQueuedSong(song);
@@ -229,6 +247,20 @@ export class RoomSessionStore {
     this.queue.update((items) => [...items, item]);
     this.persist();
     return { itemId: item.id, position: this.queue().length, status: 'added', title: item.title };
+  }
+
+  private async requestRemoteSong(
+    roomId: string,
+    song: Omit<QueueItem, 'id' | 'requestedBy'>
+  ): Promise<{ error: { message: string } | null }> {
+    const { error } = await this.supabase.client.rpc('request_queue_item', {
+      p_album_image_url: song.albumImageUrl ?? null,
+      p_artist: song.artist,
+      p_room_id: roomId,
+      p_spotify_track_id: song.spotifyTrackId || this.trackId(song),
+      p_title: song.title
+    });
+    return { error };
   }
 
   private async loadPublicQueue(code: string): Promise<void> {
@@ -284,17 +316,33 @@ export class RoomSessionStore {
       .eq('room_id', room.id)
       .eq('status', 'queued')
       .order('position');
-    if (error) throw error;
+
+    const rows = error
+      ? (
+          await this.supabase.client
+            .from('queue_items')
+            .select('id, title, artist, album_image_url, spotify_track_id, position')
+            .eq('room_id', room.id)
+            .eq('status', 'queued')
+            .order('position')
+        ).data
+      : data;
+
+    if (!rows) {
+      return;
+    }
 
     this.queue.set(
-      (data ?? []).map((item) => ({
+      rows.map((item) => ({
         albumImageUrl: item.album_image_url,
         artist: item.artist,
         id: item.id,
         requestedBy:
-          (Array.isArray(item.guests)
-            ? item.guests[0]?.nickname
-            : (item.guests as { nickname?: string } | null)?.nickname) ?? 'Invitado',
+          'guests' in item
+            ? (Array.isArray(item.guests)
+                ? item.guests[0]?.nickname
+                : (item.guests as { nickname?: string } | null)?.nickname) ?? 'Invitado'
+            : 'Invitado',
         spotifyTrackId: item.spotify_track_id,
         title: item.title
       }))
