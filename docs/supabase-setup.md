@@ -51,7 +51,7 @@ La última añade la sincronización con Spotify: marca la canción que está so
 
 En [Spotify for Developers](https://developer.spotify.com/dashboard), dentro de la app de Tonavia:
 
-1. **Settings → Redirect URIs**: agrega `https://tonavia.vercel.app/admin` y, para desarrollo, `http://127.0.0.1:4200/admin` (Spotify no acepta `localhost`).
+1. **Settings → Redirect URIs**: agrega `https://tonavia.vercel.app/api/spotify/callback` y, para desarrollo, `http://127.0.0.1:4200/api/spotify/callback` (Spotify no acepta `localhost`).
 2. **User Management**: mientras la app esté en modo desarrollo, agrega el correo de la cuenta de Spotify del anfitrión.
 3. La cuenta del anfitrión necesita Spotify Premium para que Tonavia reproduzca y encole canciones.
 

@@ -205,7 +205,7 @@ export class SpotifyPlayerService {
   }
 
   private redirectUri(): string {
-    return `${window.location.origin}/admin`;
+    return `${window.location.origin}/api/spotify/callback`;
   }
 
   private randomString(length: number): string {
