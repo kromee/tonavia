@@ -38,6 +38,8 @@ export class RoomSessionStore {
       this.guestName.set('');
       this.persist();
     }
+
+    void this.hydrate();
   }
 
   async createRoom(name: string): Promise<Room> {
@@ -62,7 +64,6 @@ export class RoomSessionStore {
         localRoom.name = data.name;
         localRoom.status = data.status;
         this.syncMode.set('remote');
-        await this.subscribeToRoom(data.id);
       } catch (error) {
         this.useLocalFallback(error);
       }
@@ -72,16 +73,19 @@ export class RoomSessionStore {
     this.queue.set([]);
     this.guestName.set('');
     this.persist();
+    await this.hydrate();
     return localRoom;
   }
 
-  ensureRoom(code: string): void {
-    if (this.room()?.code === code) return;
+  async openRoom(code: string): Promise<void> {
+    if (this.room()?.code !== code) {
+      this.room.set({ code, name: 'Sala Tonavia', status: 'active' });
+      this.queue.set([]);
+      this.guestName.set('');
+      this.persist();
+    }
 
-    this.room.set({ code, name: 'Sala Tonavia', status: 'active' });
-    this.queue.set([]);
-    this.guestName.set('');
-    this.persist();
+    await this.hydrate(code);
   }
 
   async joinRoom(code: string, nickname: string): Promise<void> {
@@ -143,6 +147,25 @@ export class RoomSessionStore {
     this.persist();
   }
 
+  async hydrate(code = this.room()?.code): Promise<void> {
+    if (!this.supabase.isConfigured || !code) {
+      return;
+    }
+
+    try {
+      await this.supabase.ensureAnonymousSession();
+      await this.loadPublicQueue(code);
+      const roomId = this.room()?.id;
+      if (roomId) {
+        await this.subscribeToRoom(roomId);
+      }
+      this.syncMode.set('remote');
+      this.persist();
+    } catch (error) {
+      this.useLocalFallback(error);
+    }
+  }
+
   async addSong(song: Omit<QueueItem, 'id' | 'requestedBy'>): Promise<'added' | 'duplicate' | 'closed'> {
     if (!this.isActive()) return 'closed';
 
@@ -179,6 +202,49 @@ export class RoomSessionStore {
     return 'added';
   }
 
+  private async loadPublicQueue(code: string): Promise<void> {
+    const { data, error } = await this.supabase.client.rpc('get_room_queue', {
+      p_room_code: code
+    });
+
+    if (!error && data) {
+      const preview = data as Array<{
+        artist: string | null;
+        item_id: string | null;
+        requested_by: string | null;
+        room_code: string;
+        room_id: string;
+        room_name: string;
+        room_status: Room['status'];
+        title: string | null;
+      }>;
+      const first = preview[0];
+      if (!first) {
+        return;
+      }
+
+      this.room.set({
+        code: first.room_code,
+        id: first.room_id,
+        name: first.room_name,
+        status: first.room_status
+      });
+      this.queue.set(
+        preview
+          .filter((item) => item.item_id)
+          .map((item) => ({
+            artist: item.artist ?? '',
+            id: item.item_id as string,
+            requestedBy: item.requested_by ?? 'Invitado',
+            title: item.title ?? ''
+          }))
+      );
+      return;
+    }
+
+    await this.loadQueue();
+  }
+
   private async loadQueue(): Promise<void> {
     const room = this.room();
     if (!room?.id) return;
@@ -195,10 +261,14 @@ export class RoomSessionStore {
       (data ?? []).map((item) => ({
         artist: item.artist,
         id: item.id,
-        requestedBy: (item.guests as { nickname?: string } | null)?.nickname ?? 'Invitado',
+        requestedBy:
+          (Array.isArray(item.guests)
+            ? item.guests[0]?.nickname
+            : (item.guests as { nickname?: string } | null)?.nickname) ?? 'Invitado',
         title: item.title
       }))
     );
+    this.persist();
   }
 
   private async subscribeToRoom(roomId: string): Promise<void> {
