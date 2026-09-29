@@ -11,9 +11,11 @@ export interface Room {
 }
 
 export interface QueueItem {
+  albumImageUrl?: string | null;
   artist: string;
   id: string;
   requestedBy: string;
+  spotifyTrackId?: string;
   title: string;
 }
 
@@ -172,10 +174,10 @@ export class RoomSessionStore {
     const room = this.room();
     if (this.supabase.isConfigured && room?.id) {
       const { error } = await this.supabase.client.rpc('request_queue_item', {
-        p_album_image_url: null,
+        p_album_image_url: song.albumImageUrl ?? null,
         p_artist: song.artist,
         p_room_id: room.id,
-        p_spotify_track_id: this.trackId(song),
+        p_spotify_track_id: song.spotifyTrackId || this.trackId(song),
         p_title: song.title
       });
 
@@ -189,8 +191,11 @@ export class RoomSessionStore {
       this.useLocalFallback(error);
     }
 
-    const duplicate = this.queue().some(
-      (item) => item.title.toLocaleLowerCase() === song.title.toLocaleLowerCase() && item.artist.toLocaleLowerCase() === song.artist.toLocaleLowerCase()
+    const duplicate = this.queue().some((item) =>
+      song.spotifyTrackId
+        ? item.spotifyTrackId === song.spotifyTrackId
+        : item.title.toLocaleLowerCase() === song.title.toLocaleLowerCase() &&
+          item.artist.toLocaleLowerCase() === song.artist.toLocaleLowerCase()
     );
     if (duplicate) return 'duplicate';
 
@@ -251,7 +256,7 @@ export class RoomSessionStore {
 
     const { data, error } = await this.supabase.client
       .from('queue_items')
-      .select('id, title, artist, position, guests(nickname)')
+      .select('id, title, artist, album_image_url, position, guests(nickname)')
       .eq('room_id', room.id)
       .eq('status', 'queued')
       .order('position');
@@ -259,6 +264,7 @@ export class RoomSessionStore {
 
     this.queue.set(
       (data ?? []).map((item) => ({
+        albumImageUrl: item.album_image_url,
         artist: item.artist,
         id: item.id,
         requestedBy:
