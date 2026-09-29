@@ -90,6 +90,66 @@ export class RoomSessionStore {
     await this.hydrate(code);
   }
 
+  async restoreOwnedRoom(): Promise<boolean> {
+    if (!this.supabase.isConfigured) return false;
+
+    try {
+      const ownerId = await this.supabase.ensureAnonymousSession();
+      const { data, error } = await this.supabase.client
+        .from('rooms')
+        .select('code')
+        .eq('owner_id', ownerId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error || !data) return false;
+
+      return this.openRoomByCode(data.code);
+    } catch {
+      return false;
+    }
+  }
+
+  async openRoomByCode(code: string): Promise<boolean> {
+    const normalized = code.trim().toUpperCase();
+    if (!normalized || !this.supabase.isConfigured) return false;
+
+    try {
+      await this.supabase.ensureAnonymousSession();
+      if (this.room()?.code !== normalized) {
+        this.queue.set([]);
+        this.guestName.set('');
+      }
+
+      const found = await this.loadPublicQueue(normalized);
+      if (!found) return false;
+
+      const roomId = this.room()?.id;
+      if (roomId) {
+        await this.subscribeToRoom(roomId);
+      }
+      this.syncMode.set('remote');
+      this.persist();
+      return true;
+    } catch (error) {
+      this.useLocalFallback(error);
+      return false;
+    }
+  }
+
+  async refreshQueue(): Promise<void> {
+    const code = this.room()?.code;
+    if (!this.supabase.isConfigured || !code) return;
+
+    try {
+      await this.loadPublicQueue(code);
+      this.persist();
+    } catch {
+      // The next refresh or realtime event will retry.
+    }
+  }
+
   async joinRoom(code: string, nickname: string): Promise<void> {
     const trimmedName = nickname.trim();
     if (!trimmedName) return;
@@ -263,7 +323,7 @@ export class RoomSessionStore {
     return { error };
   }
 
-  private async loadPublicQueue(code: string): Promise<void> {
+  private async loadPublicQueue(code: string): Promise<boolean> {
     const { data, error } = await this.supabase.client.rpc('get_room_queue', {
       p_room_code: code
     });
@@ -281,7 +341,7 @@ export class RoomSessionStore {
       }>;
       const first = preview[0];
       if (!first) {
-        return;
+        return false;
       }
 
       this.room.set({
@@ -300,10 +360,11 @@ export class RoomSessionStore {
             title: item.title ?? ''
           }))
       );
-      return;
+      return true;
     }
 
     await this.loadQueue();
+    return Boolean(this.room()?.id);
   }
 
   private async loadQueue(): Promise<void> {
