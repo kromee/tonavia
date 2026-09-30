@@ -10,10 +10,25 @@ const handlers = {
   '/api/spotify/search': require('../api/spotify/search.js')
 };
 
+const host = process.env.TONAVIA_API_HOST ?? '127.0.0.1';
 const port = Number(process.env.TONAVIA_API_PORT ?? 3001);
 
+function withVercelResponse(response) {
+  response.status = (code) => {
+    response.statusCode = code;
+    return response;
+  };
+
+  response.json = (payload) => {
+    response.setHeader('Content-Type', 'application/json');
+    response.end(JSON.stringify(payload));
+  };
+
+  return response;
+}
+
 createServer((request, response) => {
-  const url = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
+  const url = new URL(request.url ?? '/', `http://${host}:${port}`);
 
   const handler = handlers[url.pathname];
   if (!handler) {
@@ -23,7 +38,7 @@ createServer((request, response) => {
   }
 
   request.query = Object.fromEntries(url.searchParams.entries());
-  handler(request, response);
-}).listen(port, () => {
-  console.log(`API local lista en http://127.0.0.1:${port}`);
+  handler(request, withVercelResponse(response));
+}).listen(port, host, () => {
+  console.log(`API local lista en http://${host}:${port}`);
 });
