@@ -22,6 +22,7 @@ export interface QueueItem {
 }
 
 const STORAGE_KEY = 'tonavia:room-session';
+const GUEST_NAME_KEY_PREFIX = 'tonavia:guest-name:';
 
 @Injectable({ providedIn: 'root' })
 export class RoomSessionStore {
@@ -42,6 +43,10 @@ export class RoomSessionStore {
       this.queue.set([]);
       this.guestName.set('');
       this.persist();
+    }
+
+    if (this.room()?.code && this.guestName()) {
+      this.rememberGuestName(this.room()!.code, this.guestName());
     }
 
     void this.hydrate();
@@ -86,7 +91,7 @@ export class RoomSessionStore {
     if (this.room()?.code !== code) {
       this.room.set({ code, name: 'Sala Tonavia', status: 'active' });
       this.queue.set([]);
-      this.guestName.set('');
+      this.guestName.set(this.guestNameForRoom(code));
       this.persist();
     }
 
@@ -122,7 +127,7 @@ export class RoomSessionStore {
       await this.supabase.ensureAnonymousSession();
       if (this.room()?.code !== normalized) {
         this.queue.set([]);
-        this.guestName.set('');
+        this.guestName.set(this.guestNameForRoom(normalized));
       }
 
       const found = await this.loadPublicQueue(normalized);
@@ -200,6 +205,7 @@ export class RoomSessionStore {
           status: joined.room_status
         });
         this.guestName.set(trimmedName);
+        this.rememberGuestName(joined.room_code, trimmedName);
         this.syncMode.set('remote');
         this.persist();
         await this.loadQueue();
@@ -232,7 +238,12 @@ export class RoomSessionStore {
   }
 
   setGuestName(name: string): void {
-    this.guestName.set(name.trim());
+    const trimmedName = name.trim();
+    this.guestName.set(trimmedName);
+    const roomCode = this.room()?.code;
+    if (roomCode && trimmedName) {
+      this.rememberGuestName(roomCode, trimmedName);
+    }
     this.persist();
   }
 
@@ -483,6 +494,14 @@ export class RoomSessionStore {
 
   private persist(): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ guestName: this.guestName(), queue: this.queue(), room: this.room() }));
+  }
+
+  private guestNameForRoom(code: string): string {
+    return localStorage.getItem(`${GUEST_NAME_KEY_PREFIX}${code.trim().toUpperCase()}`) ?? '';
+  }
+
+  private rememberGuestName(code: string, name: string): void {
+    localStorage.setItem(`${GUEST_NAME_KEY_PREFIX}${code.trim().toUpperCase()}`, name.trim());
   }
 
   private read(): { guestName: string; queue: QueueItem[]; room: Room | null } {
