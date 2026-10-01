@@ -2,22 +2,18 @@ import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { SpotifySearchService, SpotifyTrack } from '../../core/spotify/spotify-search.service';
-import { ThemePreference, ThemeService } from '../../core/theme/theme.service';
+import { ThemeSwitchComponent } from '../../core/theme/theme-switch.component';
 import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
 
 @Component({
   selector: 'app-room-page',
-  imports: [RouterLink],
+  imports: [RouterLink, ThemeSwitchComponent],
   template: `
     <main class="page-shell">
       <header class="topbar">
         <a class="brand" routerLink="/admin"><span class="brand-mark">T</span>Tonavia</a>
-        <div class="theme-toggle" role="group" aria-label="Tema visual">
-          <button type="button" [class.is-active]="themePreference() === 'system'" (click)="setTheme('system')">Sistema</button>
-          <button type="button" [class.is-active]="themePreference() === 'light'" (click)="setTheme('light')">Claro</button>
-          <button type="button" [class.is-active]="themePreference() === 'dark'" (click)="setTheme('dark')">Oscuro</button>
-        </div>
         @if (room()) { <span class="room-code">Sala {{ room()!.code }}</span> }
+        <app-theme-switch />
       </header>
 
       @if (loadingRoom()) {
@@ -108,7 +104,6 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
     .topbar { flex-wrap: wrap; }
     .brand { align-items: center; color: var(--tonavia-ink); display: inline-flex; font-size: 1.12rem; font-weight: 800; gap: 0.6rem; letter-spacing: -0.04em; text-decoration: none; }
     .brand-mark { align-items: center; background: linear-gradient(145deg, var(--tonavia-accent), #d3b7ff); border-radius: 0.55rem; color: #160d24; display: inline-flex; height: 2rem; justify-content: center; width: 2rem; }
-    .theme-toggle { margin-left: auto; }
     .room-code, .queue-count, .step { border: 1px solid var(--tonavia-border); border-radius: 999px; color: var(--tonavia-muted); font-size: 0.73rem; font-weight: 700; letter-spacing: 0.04em; padding: 0.45rem 0.7rem; }
     h1, h2, p { margin: 0; }
     h1 { font-size: clamp(2.65rem, 12vw, 5rem); letter-spacing: -0.075em; line-height: 0.92; margin-top: 0.65rem; text-wrap: balance; }
@@ -182,14 +177,13 @@ import { QueueItem, RoomSessionStore } from '../rooms/room-session.store';
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes pulse { to { height: 20%; opacity: 0.5; } }
     @keyframes reveal { from { opacity: 0; transform: translateY(0.6rem); } }
-    @media (max-width: 28rem) { .page-shell { padding-inline: 1rem; } .theme-toggle { margin-left: 0; } .room-code { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .section-heading { align-items: flex-start; } .queue-count { white-space: nowrap; } .feedback { grid-template-columns: auto 1fr; } .feedback button { grid-column: 2; justify-self: start; padding: 0; } }
+    @media (max-width: 28rem) { .page-shell { padding-inline: 1rem; } .room-code { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .section-heading { align-items: flex-start; } .queue-count { white-space: nowrap; } .feedback { grid-template-columns: auto 1fr; } .feedback button { grid-column: 2; justify-self: start; padding: 0; } }
   `
 })
 export class RoomPage {
   private readonly route = inject(ActivatedRoute);
   private readonly store = inject(RoomSessionStore);
   private readonly spotify = inject(SpotifySearchService);
-  private readonly theme = inject(ThemeService);
   private searchTimer?: ReturnType<typeof setTimeout>;
   private highlightTimer?: ReturnType<typeof setTimeout>;
 
@@ -209,7 +203,6 @@ export class RoomPage {
   protected readonly feedbackKind = signal<'added' | 'duplicate' | 'closed' | ''>('');
   protected readonly highlightedId = signal('');
   protected readonly addingId = signal('');
-  protected readonly themePreference = this.theme.preference;
 
   constructor() {
     void this.loadRoom();
@@ -223,7 +216,6 @@ export class RoomPage {
   }
 
   protected updateName(event: Event): void { this.nameDraft.set((event.target as HTMLInputElement).value); }
-  protected setTheme(preference: ThemePreference): void { this.theme.setPreference(preference); }
 
   protected async saveName(): Promise<void> {
     if (!this.nameDraft().trim() || this.joining()) return;

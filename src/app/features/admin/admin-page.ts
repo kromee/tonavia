@@ -3,23 +3,19 @@ import { RouterLink } from '@angular/router';
 import QRCode from 'qrcode';
 
 import { SpotifyPlayerService } from '../../core/spotify/spotify-player.service';
-import { ThemePreference, ThemeService } from '../../core/theme/theme.service';
+import { ThemeSwitchComponent } from '../../core/theme/theme-switch.component';
 import { RoomSessionStore } from '../rooms/room-session.store';
 import { PlaybackSyncService } from './playback-sync.service';
 
 @Component({
   selector: 'app-admin-page',
-  imports: [RouterLink],
+  imports: [RouterLink, ThemeSwitchComponent],
   template: `
     <main class="page-shell">
       <header class="topbar">
         <a class="brand" routerLink="/admin"><span class="brand-mark">T</span>Tonavia</a>
-        <div class="theme-toggle" role="group" aria-label="Tema visual">
-          <button type="button" [class.is-active]="themePreference() === 'system'" (click)="setTheme('system')">Sistema</button>
-          <button type="button" [class.is-active]="themePreference() === 'light'" (click)="setTheme('light')">Claro</button>
-          <button type="button" [class.is-active]="themePreference() === 'dark'" (click)="setTheme('dark')">Oscuro</button>
-        </div>
         <span class="host-label">Panel del anfitrión</span>
+        <app-theme-switch />
       </header>
 
       <section class="hero">
@@ -222,7 +218,6 @@ export class AdminPage {
   private readonly store = inject(RoomSessionStore);
   private readonly spotify = inject(SpotifyPlayerService);
   private readonly sync = inject(PlaybackSyncService);
-  private readonly theme = inject(ThemeService);
   private readonly refreshTimer = setInterval(() => void this.store.refreshQueue(), 8000);
 
   protected readonly room = this.store.room;
@@ -231,7 +226,6 @@ export class AdminPage {
   protected readonly spotifyConnected = this.spotify.isConnected;
   protected readonly playback = this.sync.playback;
   protected readonly spotifyError = this.sync.error;
-  protected readonly themePreference = this.theme.preference;
   protected readonly restoring = signal(false);
   protected readonly creating = signal(false);
   protected readonly opening = signal(false);
@@ -259,7 +253,6 @@ export class AdminPage {
   protected connectSpotify(): Promise<void> { return this.spotify.connect(); }
   protected disconnectSpotify(): void { this.sync.stop(); this.spotify.disconnect(); this.playback.set(null); this.spotifyError.set(''); }
   protected playQueue(): Promise<void> { return this.sync.playQueue(); }
-  protected setTheme(preference: ThemePreference): void { this.theme.setPreference(preference); }
 
   protected async removeItem(itemId: string): Promise<void> {
     if (this.removingId()) return;
