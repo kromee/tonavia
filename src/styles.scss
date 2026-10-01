@@ -2,8 +2,14 @@
   --tonavia-accent: #a970ff;
   --tonavia-accent-strong: #8b4df4;
   --tonavia-border: rgba(255, 255, 255, 0.12);
+  --tonavia-card-hover: rgba(255, 255, 255, 0.08);
+  --tonavia-control: rgba(10, 8, 13, 0.72);
+  --tonavia-control-placeholder: #777181;
   --tonavia-ink: #f8f6ff;
   --tonavia-muted: #aaa4b8;
+  --tonavia-page-bg: radial-gradient(circle at 12% -10%, rgba(139, 77, 244, 0.24), transparent 34rem),
+    radial-gradient(circle at 95% 18%, rgba(58, 203, 255, 0.08), transparent 28rem),
+    #0d0b11;
   --tonavia-surface: rgba(31, 27, 40, 0.82);
   --tonavia-surface-strong: #231e2d;
   --tonavia-success: #4ade80;
@@ -16,15 +22,54 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --tonavia-accent: #7c3aed;
+    --tonavia-accent-strong: #6d28d9;
+    --tonavia-border: rgba(36, 28, 49, 0.12);
+    --tonavia-card-hover: rgba(36, 28, 49, 0.055);
+    --tonavia-control: rgba(255, 255, 255, 0.78);
+    --tonavia-control-placeholder: #8c8497;
+    --tonavia-ink: #21192d;
+    --tonavia-muted: #6f667b;
+    --tonavia-page-bg: radial-gradient(circle at 12% -10%, rgba(124, 58, 237, 0.14), transparent 34rem),
+      radial-gradient(circle at 95% 18%, rgba(29, 185, 84, 0.08), transparent 28rem),
+      #fbf8f2;
+    --tonavia-surface: rgba(255, 255, 255, 0.78);
+    --tonavia-surface-strong: #ffffff;
+    --tonavia-success: #159947;
+    --tonavia-danger: #c93652;
+    --tonavia-shadow: 0 24px 70px rgba(40, 25, 61, 0.12);
+    color-scheme: light;
+  }
+}
+
+:root[data-theme='light'] {
+  --tonavia-accent: #7c3aed;
+  --tonavia-accent-strong: #6d28d9;
+  --tonavia-border: rgba(36, 28, 49, 0.12);
+  --tonavia-card-hover: rgba(36, 28, 49, 0.055);
+  --tonavia-control: rgba(255, 255, 255, 0.78);
+  --tonavia-control-placeholder: #8c8497;
+  --tonavia-ink: #21192d;
+  --tonavia-muted: #6f667b;
+  --tonavia-page-bg: radial-gradient(circle at 12% -10%, rgba(124, 58, 237, 0.14), transparent 34rem),
+    radial-gradient(circle at 95% 18%, rgba(29, 185, 84, 0.08), transparent 28rem),
+    #fbf8f2;
+  --tonavia-surface: rgba(255, 255, 255, 0.78);
+  --tonavia-surface-strong: #ffffff;
+  --tonavia-success: #159947;
+  --tonavia-danger: #c93652;
+  --tonavia-shadow: 0 24px 70px rgba(40, 25, 61, 0.12);
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
-  background:
-    radial-gradient(circle at 12% -10%, rgba(139, 77, 244, 0.24), transparent 34rem),
-    radial-gradient(circle at 95% 18%, rgba(58, 203, 255, 0.08), transparent 28rem),
-    #0d0b11;
+  background: var(--tonavia-page-bg);
   margin: 0;
   min-width: 20rem;
   overflow-x: hidden;
@@ -51,6 +96,45 @@ input:focus-visible {
 ::selection {
   background: var(--tonavia-accent);
   color: #130d1d;
+}
+
+.theme-toggle {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--tonavia-border);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 0.15rem;
+  padding: 0.2rem;
+}
+
+.theme-toggle button {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--tonavia-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  min-height: 2rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.theme-toggle button.is-active {
+  background: var(--tonavia-accent);
+  color: #fff;
+}
+
+@media (max-width: 32rem) {
+  .theme-toggle {
+    order: 3;
+    width: 100%;
+  }
+
+  .theme-toggle button {
+    flex: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

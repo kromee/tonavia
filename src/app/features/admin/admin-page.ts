@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import QRCode from 'qrcode';
 
 import { SpotifyPlayerService } from '../../core/spotify/spotify-player.service';
+import { ThemePreference, ThemeService } from '../../core/theme/theme.service';
 import { RoomSessionStore } from '../rooms/room-session.store';
 import { PlaybackSyncService } from './playback-sync.service';
 
@@ -13,6 +14,11 @@ import { PlaybackSyncService } from './playback-sync.service';
     <main class="page-shell">
       <header class="topbar">
         <a class="brand" routerLink="/admin"><span class="brand-mark">T</span>Tonavia</a>
+        <div class="theme-toggle" role="group" aria-label="Tema visual">
+          <button type="button" [class.is-active]="themePreference() === 'system'" (click)="setTheme('system')">Sistema</button>
+          <button type="button" [class.is-active]="themePreference() === 'light'" (click)="setTheme('light')">Claro</button>
+          <button type="button" [class.is-active]="themePreference() === 'dark'" (click)="setTheme('dark')">Oscuro</button>
+        </div>
         <span class="host-label">Panel del anfitrión</span>
       </header>
 
@@ -115,7 +121,7 @@ import { PlaybackSyncService } from './playback-sync.service';
   styles: `
     :host { display: block; }
     .page-shell { display: grid; gap: 2rem; margin: 0 auto; max-width: 72rem; min-height: 100dvh; padding: 1.5rem 1.5rem 5rem; }
-    .topbar { align-items: center; display: flex; justify-content: space-between; }
+    .topbar { align-items: center; display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: space-between; }
     .brand { align-items: center; color: var(--tonavia-ink); display: inline-flex; font-size: 1.15rem; font-weight: 800; gap: 0.6rem; letter-spacing: -0.04em; text-decoration: none; }
     .brand-mark { align-items: center; background: linear-gradient(145deg, var(--tonavia-accent), #d3b7ff); border-radius: 0.55rem; color: #160d24; display: inline-flex; height: 2rem; justify-content: center; width: 2rem; }
     .host-label { border: 1px solid var(--tonavia-border); border-radius: 999px; color: var(--tonavia-muted); font-size: 0.72rem; font-weight: 750; padding: 0.45rem 0.75rem; }
@@ -131,14 +137,14 @@ import { PlaybackSyncService } from './playback-sync.service';
     .primary-card { background: linear-gradient(145deg, rgba(139,77,244,0.19), var(--tonavia-surface)); }
     .card-number { color: var(--tonavia-accent); font-size: 0.7rem; font-weight: 850; letter-spacing: 0.12em; }
     .setup-card p, .loading-card p, .room-summary p, .danger-zone p { color: var(--tonavia-muted); line-height: 1.5; margin-top: 0.35rem; }
-    label { color: #d9d4e1; font-size: 0.8rem; font-weight: 750; margin-top: 0.3rem; }
-    input { background: rgba(10,8,13,0.72); border: 1px solid var(--tonavia-border); border-radius: 0.9rem; color: var(--tonavia-ink); min-height: 3.1rem; padding: 0.8rem 0.95rem; }
-    input::placeholder { color: #777181; }
+    label { color: var(--tonavia-ink); font-size: 0.8rem; font-weight: 750; margin-top: 0.3rem; }
+    input { background: var(--tonavia-control); border: 1px solid var(--tonavia-border); border-radius: 0.9rem; color: var(--tonavia-ink); min-height: 3.1rem; padding: 0.8rem 0.95rem; }
+    input::placeholder { color: var(--tonavia-control-placeholder); }
     input:focus { border-color: var(--tonavia-accent); box-shadow: 0 0 0 4px rgba(169,112,255,0.1); }
     button, a { align-items: center; border-radius: 999px; display: inline-flex; font: inherit; font-weight: 750; justify-content: center; min-height: 2.9rem; padding: 0.75rem 1.15rem; text-decoration: none; }
     button { background: linear-gradient(135deg, var(--tonavia-accent-strong), var(--tonavia-accent)); border: 0; color: #fff; cursor: pointer; }
     button:disabled { cursor: wait; opacity: 0.46; }
-    a, .secondary { background: rgba(255,255,255,0.045); border: 1px solid var(--tonavia-border); color: var(--tonavia-ink); }
+    a, .secondary { background: var(--tonavia-card-hover); border: 1px solid var(--tonavia-border); color: var(--tonavia-ink); }
     .loading-card { align-items: center; display: flex; gap: 1rem; padding: 1.5rem; }
     .loader { animation: spin 0.7s linear infinite; border: 2px solid var(--tonavia-border); border-radius: 50%; border-top-color: var(--tonavia-accent); display: inline-block; height: 2rem; width: 2rem; }
     .room-card { align-items: center; background: linear-gradient(145deg, rgba(139,77,244,0.18), rgba(31,27,40,0.9)); display: grid; gap: 2rem; grid-template-columns: minmax(0, 1fr) auto; padding: 1.6rem; }
@@ -162,7 +168,7 @@ import { PlaybackSyncService } from './playback-sync.service';
     .spotify-actions button:not(.text-button) { background: #1db954; color: #07190d; }
     .text-button { background: transparent; color: var(--tonavia-muted); font-size: 0.78rem; min-height: auto; padding: 0.5rem; }
     .hint { font-size: 0.8rem; }
-    .progress { background: rgba(255,255,255,0.08); border-radius: 99px; height: 0.25rem; margin-top: 0.85rem; overflow: hidden; width: min(22rem, 100%); }
+    .progress { background: var(--tonavia-card-hover); border-radius: 99px; height: 0.25rem; margin-top: 0.85rem; overflow: hidden; width: min(22rem, 100%); }
     .progress span { background: var(--tonavia-success); display: block; height: 100%; transition: width 500ms linear; }
     .queue-card { padding: 1.5rem; }
     .queue-heading { align-items: end; display: flex; gap: 1rem; justify-content: space-between; }
@@ -170,7 +176,7 @@ import { PlaybackSyncService } from './playback-sync.service';
     .queue-stat strong { color: var(--tonavia-accent); font-size: 2rem; }
     .queue-stat span { color: var(--tonavia-muted); font-size: 0.75rem; }
     ol { display: grid; gap: 0.35rem; list-style: none; margin: 1.25rem 0 0; padding: 0; }
-    li { align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); border-radius: 0.8rem; display: grid; gap: 0.8rem; grid-template-columns: 2rem auto minmax(0, 1fr) auto; padding: 0.7rem; }
+    li { align-items: center; border-bottom: 1px solid var(--tonavia-border); border-radius: 0.8rem; display: grid; gap: 0.8rem; grid-template-columns: 2rem auto minmax(0, 1fr) auto; padding: 0.7rem; }
     li.is-playing { background: rgba(74,222,128,0.08); border-color: rgba(74,222,128,0.16); }
     .position { color: var(--tonavia-muted); font-size: 0.78rem; font-weight: 850; text-align: center; }
     .track-art { background: #2e263b; border-radius: 0.75rem; color: var(--tonavia-accent); height: 3rem; object-fit: cover; width: 3rem; }
@@ -216,6 +222,7 @@ export class AdminPage {
   private readonly store = inject(RoomSessionStore);
   private readonly spotify = inject(SpotifyPlayerService);
   private readonly sync = inject(PlaybackSyncService);
+  private readonly theme = inject(ThemeService);
   private readonly refreshTimer = setInterval(() => void this.store.refreshQueue(), 8000);
 
   protected readonly room = this.store.room;
@@ -224,6 +231,7 @@ export class AdminPage {
   protected readonly spotifyConnected = this.spotify.isConnected;
   protected readonly playback = this.sync.playback;
   protected readonly spotifyError = this.sync.error;
+  protected readonly themePreference = this.theme.preference;
   protected readonly restoring = signal(false);
   protected readonly creating = signal(false);
   protected readonly opening = signal(false);
@@ -251,6 +259,7 @@ export class AdminPage {
   protected connectSpotify(): Promise<void> { return this.spotify.connect(); }
   protected disconnectSpotify(): void { this.sync.stop(); this.spotify.disconnect(); this.playback.set(null); this.spotifyError.set(''); }
   protected playQueue(): Promise<void> { return this.sync.playQueue(); }
+  protected setTheme(preference: ThemePreference): void { this.theme.setPreference(preference); }
 
   protected async removeItem(itemId: string): Promise<void> {
     if (this.removingId()) return;
